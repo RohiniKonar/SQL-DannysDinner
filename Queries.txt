@@ -1,0 +1,162 @@
+/*1. What is the total amount each customer spent at the restaurant?
+I have used INNER JOIN, SUM and GROUP BY. By joining the tables Sales and Menu I would get the customer information after which I have summed it to get the total amount spend
+by grouping the customer_id. 
+*/
+SELECT
+	s.customer_id, 
+	SUM(m.price) as total_amount_spent
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+GROUP BY s.customer_id;
+
+
+/*2. How many days has each customer visited the restaurant?
+I have used COUNT and GROUP BY to get the desired output.
+*/
+SELECT
+	customer_id, COUNT(customer_id) as no_of_visits
+FROM
+	Sales
+GROUP BY customer_id;
+
+/*3. What was the first item from the menu purchased by each customer?
+I have used CTE along with RANK windows function to rank the customers based on customer_id to get the first product that was ordered by the customer.
+After this I have retrieved the first ranked records.
+*/
+WITH RANKCTE AS 
+(SELECT
+	s.customer_id, m.product_name,s.order_date,rank() over(PARTITION BY s.customer_id ORDER BY s.order_date) as rank
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id)
+
+SELECT customer_id,product_name,order_date FROM RANKCTE where rank=1;
+
+
+/*4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+I have used INNER JOIN along with COUNT to get the desired output
+*/
+SELECT
+	m.product_name, count(s.product_id) as no_of_times_purchased
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+GROUP BY m.product_name
+ORDER BY no_of_times_purchased DESC;
+
+/*5. Which item was the most popular for each customer?
+I have used CTE along with RANK windows function to rank the customers based on customer_id to get the count of products that was ordered by the customer.
+After this I have retrieved the first ranked records with the highest count.
+*/
+WITH POPULATCTE AS 
+(SELECT
+	s.customer_id, m.product_name,count(s.product_id) as no_of_times_ordered, rank() 
+	over(PARTITION BY s.customer_id ORDER BY count(s.product_id)DESC) as rank
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+GROUP BY s.customer_id,m.product_name)
+
+SELECT
+	customer_id,
+	product_name,
+	no_of_times_ordered
+FROM POPULATCTE
+WHERE rank=1;
+
+/*6. Which item was purchased first by the customer after they became a member?
+I have used CTE along with RANK windows function to rank the customers based on customer_id to get the orders of the customers and the ordered based on order_date.
+The where condition in CTE will pull records that were ordered before the customer became a member and then I have retrieved the first ranked records with the lastest order_date.
+*/
+WITH FIRSTCTE AS 
+(SELECT
+	s.customer_id,
+	m.product_name,
+	s.order_date,
+	rank() over(PARTITION BY s.customer_id ORDER BY s.order_date) as rank
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+	JOIN Members mb
+	on s.customer_id=mb.customer_id
+WHERE s.order_date>=mb.join_date)
+
+SELECT 
+	customer_id,
+	product_name,
+	order_date
+FROM FIRSTCTE
+WHERE rank=1;
+	
+	
+/*7. Which item was purchased just before the customer became a member?
+I have used CTE along with RANK windows function to rank the customers based on customer_id to get the orders of the customers and the ordered based on order_date DESC.
+The where condition in CTE will pull records that were ordered after the customer became a member and then I have retrieved the first ranked records with the lastest order_date.
+*/
+WITH LASTCTE AS 
+(SELECT
+	s.customer_id,
+	m.product_name,
+	s.order_date,
+	RANK() OVER(PARTITION BY s.customer_id ORDER BY s.order_date DESC) as rank
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+	JOIN Members mb
+	on s.customer_id=mb.customer_id
+WHERE s.order_date<mb.join_date)
+
+SELECT 
+	customer_id,
+	product_name,
+	order_date
+FROM LASTCTE
+WHERE rank=1;
+
+/*8. What is the total items and amount spent for each member before they became a member?
+I have used COUNT of DISTINCT products and SUM to get the desired output.
+*/
+SELECT
+	s.customer_id,
+	COUNT(DISTINCT s.product_id) as total_items,
+	SUM(m.price) as amount_spend
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+	JOIN Members mb
+	on s.customer_id=mb.customer_id
+WHERE s.order_date<mb.join_date
+GROUP BY s.customer_id;
+
+/*9. If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+I have used CASE statement to do the points calculation for Sushi and other products in the Menu table. Along with this I have used the SUM function to do the calculation group by customer_id
+*/
+SELECT
+	s.customer_id,
+	SUM(CASE 
+		WHEN m.product_name='sushi' THEN m.price*20
+		ELSE m.price*10
+	END) as points
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+GROUP BY s.customer_id;
+
+/*10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi how many points do customer A and B 
+have at the end of January?
+I have used CASE Statement along with SUM function to get the points for first week and rest of the time for member customers. DATEADD function is used to get the first week orders.
+*/
+
+SELECT
+	s.customer_id,
+	SUM(CASE
+		WHEN s.order_date>=s.order_date AND s.order_date<=DATEADD(day,7,order_date) THEN m.price*20
+		ELSE m.price*10
+	END) as member_points
+FROM
+	Sales s JOIN Menu m
+	on s.product_id=m.product_id
+	JOIN Members mb
+	on s.customer_id=mb.customer_id
+GROUP BY s.customer_id;
